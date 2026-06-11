@@ -1,0 +1,330 @@
+{
+  "name": "Check marks n8n",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.reaction }}",
+              "value2": "white_check_mark"
+            },
+            {
+              "value1": "=={{ $json.user }}",
+              "operation": "notEqual",
+              "value2": "YOUR_SLACK_BOT_USER_ID"
+            }
+          ]
+        }
+      },
+      "id": "1964d55c-89b3-49ee-b27b-2ae7c82de7ce",
+      "name": "¿Es ✅?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -96
+      ],
+      "notes": "Solo continúa si el emoji es exactamente ✅ (white_check_mark)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const messages = $input.item.json.messages;\n\nif (!messages || messages.length === 0) {\n  throw new Error('No se encontró el mensaje original');\n}\n\nconst text = messages[0].text || '';\n\nconst match = text.match(/tickets\\/([\\d]+)/);\n\nif (!match) {\n  throw new Error('No se encontró número de ticket en el mensaje: ' + text);\n}\n\nconst ticketNumber = match[1];\nconst originalTs = messages[0].ts;\nconst channel = $('Slack - Reaction Added').item.json.item.channel;\n\nreturn {\n  ticketNumber,\n  originalTs,\n  channel,\n  searchText: `tickets/${ticketNumber}`\n};"
+      },
+      "id": "68f06ad8-f457-4b97-a436-3f85cc1a54b8",
+      "name": "Extraer número de ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        -112
+      ],
+      "notes": "Parsea el texto con regex para obtener el número de ticket del link de Freshdesk"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allMessages = $input.item.json.messages || [];\nconst ticketNumber = $('Extraer número de ticket').item.json.ticketNumber;\nconst originalTs = $('Extraer número de ticket').item.json.originalTs;\nconst channel = $('Extraer número de ticket').item.json.channel;\nconst searchText = `tickets/${ticketNumber}`;\n\n// Debug\nconsole.log('Total mensajes:', allMessages.length);\nconsole.log('Buscando:', searchText);\n\nconst withTicket = allMessages.filter(msg => (msg.text || '').includes(searchText));\nconsole.log('Mensajes con ticket:', withTicket.length);\nconsole.log('Sus ts:', withTicket.map(m => m.ts));\nconsole.log('Sus reacciones:', JSON.stringify(withTicket.map(m => m.reactions)));\n\nconst duplicates = allMessages.filter(msg => {\n  const hasTicket = (msg.text || '').includes(searchText);\n  const isNotOriginal = msg.ts !== originalTs;\n  const reactions = msg.reactions || [];\n  const alreadyChecked = reactions.some(r => r.name === 'white_check_mark');\n  return hasTicket && isNotOriginal && !alreadyChecked;\n});\n\nif (duplicates.length === 0) {\n  return [];\n}\n\nreturn duplicates.map(msg => ({\n  ts: msg.ts,\n  channel,\n  ticketNumber,\n  text: (msg.text || '').substring(0, 80)\n}));"
+      },
+      "id": "7cf1983d-a616-454c-945b-175f45868447",
+      "name": "Filtrar mensajes sin ✅",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -112
+      ],
+      "notes": "Filtra mensajes con el mismo ticket que NO tengan ya ✅. Revisa TODO el historial disponible (no solo desde el checkmark) para no perder mensajes anteriores del mismo ticket."
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        -112
+      ],
+      "id": "25103600-1801-4bfc-a077-a2a83be782d9",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "url": "https://slack.com/api/conversations.history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "channel",
+              "value": "={{ $json.channel }}"
+            },
+            {
+              "name": "limit",
+              "value": "400"
+            },
+            {
+              "name": "include_all_metadata",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        -112
+      ],
+      "id": "9225e57b-9325-46ee-9fe5-15afa1096005",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "nemiAtlmb1AmRNSJ",
+          "name": "Active check marks Demo App"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/reactions.add",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "channel",
+              "value": "YOUR_SLACK_CHANNEL_ID"
+            },
+            {
+              "name": "name",
+              "value": "white_check_mark"
+            },
+            {
+              "name": "timestamp",
+              "value": "=={{ $json.ts }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        928,
+        -112
+      ],
+      "id": "a8c7b168-7d7b-467a-b77b-db13130454df",
+      "name": "HTTP Request2",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "nemiAtlmb1AmRNSJ",
+          "name": "YOUR_SLACK_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://slack.com/api/conversations.history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "channel",
+              "value": "={{ $json.item.channel }}"
+            },
+            {
+              "name": "latest",
+              "value": "=={{ $json.item.ts }}"
+            },
+            {
+              "name": "inclusive",
+              "value": "true"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "include_all_metadata",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -176,
+        -112
+      ],
+      "id": "d74fd386-6824-45f3-8cb0-cf3e17b32931",
+      "name": "Obtener mensaje canal",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "nemiAtlmb1AmRNSJ",
+          "name": "Active check marks Demo App"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "trigger": [
+          "reaction_added"
+        ],
+        "channelId": {
+          "__rl": true,
+          "value": "C0AJHAH7J0M",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -96
+      ],
+      "id": "eccebdc7-34e6-4621-8656-f4b18c77f3f4",
+      "name": "Slack - Reaction Added",
+      "webhookId": "c5199a21-47f6-46a3-9763-7084110cbad9",
+      "credentials": {
+        "slackApi": {
+          "id": "hY7bUUjoMzuPnLoz",
+          "name": "DEMO APP no borrar slack"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "¿Es ✅?": {
+      "main": [
+        [
+          {
+            "node": "Obtener mensaje canal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer número de ticket": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar mensajes sin ✅": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Filtrar mensajes sin ✅",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener mensaje canal": {
+      "main": [
+        [
+          {
+            "node": "Extraer número de ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Reaction Added": {
+      "main": [
+        [
+          {
+            "node": "¿Es ✅?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ab3dad7c-9e1e-4a49-85c5-94617459f858",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cbbb8f38d1351864ff04fa40f28b5e686f08b80b4ea037e136335312231e256c"
+  },
+  "id": "mPdLHfDtqIFQUb3S",
+  "tags": []
+}

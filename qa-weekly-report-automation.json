@@ -1,0 +1,577 @@
+{
+  "name": "QA Weekly Report - Auto",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "1 11 * * 1"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1168,
+        -192
+      ],
+      "id": "6b79d53a-9856-40f1-8aab-7f32155a786b"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "QA_automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "QA_Resultados",
+          "cachedResultUrl": "YOUR_SHEET_URL"
+        },
+        "options": {}
+      },
+      "name": "Read All QA Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1344,
+        -192
+      ],
+      "id": "09a2908c-34b4-49c5-8c37-974a36237521",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QkrXQqJxVonuOknT",
+          "name": "Active QA Workflow Automation"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json).filter(row => {\nreturn row && Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');\n});\n\nif (!rows.length) {\nreturn [];\n}\n\nconst CONFIG = {\ncurrentSheetName: 'QA_Resultados',\nhistoricalSheetName: 'QA_Historico',\nslackChannel: '#cx-team',\nnameMap: {\n'Agent1': 'Agent1',\n'Agent2': 'Agent2',\n'Agent3': 'Agent3',\n'Agent4': 'Agent4',\n'Agent5': 'Agent5',\n},\n};\n\nconst specialistKey = 'CX Specialist';\nconst scoreKey = 'Score';\nconst feedbackKey = 'Feedback';\n\nconst ignoredKeys = new Set([\n'Timestamp',\n'Email Address',\n'Conversation ID',\n'Interaction Date',\n'Proceso',\n'Sub Proceso',\n'Detalle Proceso',\nfeedbackKey,\nscoreKey,\nspecialistKey,\n]);\n\nconst allKeys = Object.keys(rows[0] || {});\nconst autofailKeys = allKeys.filter(k => String(k).includes('Autofails'));\n\nconst shouldExcludeCriterion = (key) => {\nconst lower = String(key || '').toLowerCase();\nreturn lower.includes('tiempo menor o igual a 5 minutos') || lower.includes('tiempo de respuesta');\n};\n\nconst criteriaKeys = allKeys.filter(k =>\n!ignoredKeys.has(k) &&\n!String(k).includes('Autofails') &&\n!shouldExcludeCriterion(k)\n);\n\nconst simplifyCriterion = (key) => {\nlet clean = String(key || '')\n.replace(/^¿/, '')\n.replace(/\\s+/g, ' ')\n.trim();\n\nif (clean.endsWith('?')) {\nclean = clean.slice(0, -1);\n}\n\nconst lower = clean.toLowerCase();\n\nif (lower.includes('filtros del caso') || lower.includes('user id')) return 'Filtros de chat';\nif (lower.includes('macro')) return 'Uso de macro';\nif (lower.includes('revisó y consideró toda la información')) return 'Revisión de contexto';\nif (lower.includes('empático')) return 'Empatía';\nif (lower.includes('saluda') || lower.includes('branding')) return 'Saludo y branding';\nif (lower.includes('preguntas')) return 'Sondeo y preguntas';\nif (lower.includes('resolvió')) return 'Resolución correcta';\nif (lower.includes('redactó')) return 'Redacción';\nif (lower.includes('ticket')) return 'Creación de ticket';\nif (lower.includes('protocolo')) return 'Aplicación de protocolo';\nif (lower.includes('ayuda adicional')) return 'Ayuda adicional';\nif (lower.includes('cerró')) return 'Cierre de chat';\n\nreturn clean;\n};\n\nconst normalizeAgent = (name) => {\nconst clean = String(name || '').trim();\nreturn CONFIG.nameMap[clean] || clean;\n};\n\nconst parseScore = (value) => {\nif (!value) return 0;\nconst raw = String(value).replace('%', '').replace(',', '.').trim();\nlet num = Number(raw);\nif (!Number.isFinite(num)) return 0;\nif (num > 0 && num <= 1) num = num * 100;\nreturn num;\n};\n\nconst totalInteractions = rows.length;\nconst scores = rows.map(r => parseScore(r[scoreKey]));\nconst avgScore = scores.reduce((acc, n) => acc + n, 0) / (scores.length || 1);\n\nconst criterionStats = criteriaKeys.map(key => {\nconst incorrect = rows.filter(r => String(r[key] || '').includes('❌')).length;\nreturn {\nlabel: simplifyCriterion(key),\nincorrect,\npercent: totalInteractions ? (incorrect / totalInteractions) * 100 : 0,\n};\n}).filter(c => c.incorrect > 0)\n.sort((a, b) => b.incorrect - a.incorrect);\n\nconst totalIncorrect = criterionStats.reduce((acc, c) => acc + c.incorrect, 0);\n\nconst uniqueAgents = [...new Set(rows.map(r => normalizeAgent(r[specialistKey])).filter(Boolean))];\nconst auditsPerAgent = uniqueAgents.length ? (totalInteractions / uniqueAgents.length) : totalInteractions;\n\nconst topCriteria = criterionStats.slice(0, 3);\n\nconst agentBlocks = uniqueAgents.map(agent => {\nconst agentRows = rows.filter(r => normalizeAgent(r[specialistKey]) === agent);\nconst localStats = criteriaKeys.map(key => {\nconst incorrect = agentRows.filter(r => String(r[key] || '').includes('❌')).length;\nreturn {\nlabel: simplifyCriterion(key),\nincorrect,\npercent: agentRows.length ? (incorrect / agentRows.length) * 100 : 0,\n};\n}).sort((a, b) => b.incorrect - a.incorrect);\n\nconst main = localStats[0] && localStats[0].incorrect > 0 ? localStats[0] : null;\n\nreturn { agent, main };\n});\n\nconst autofails = [];\nfor (const row of rows) {\nconst agent = normalizeAgent(row[specialistKey]);\nfor (const key of autofailKeys) {\nconst value = String(row[key] || '').trim();\nif (value && !value.includes('✅')) {\nautofails.push({\nagent,\ncriterion: simplifyCriterion(key),\n});\n}\n}\n}\n\nconst scoreEmoji = avgScore >= 95 ? '🟢' : avgScore >= 90 ? '🟡' : '🔴';\nconst opportunityEmoji = totalIncorrect <= Math.max(2, totalInteractions * 0.15)\n? '🟢'\n: totalIncorrect <= Math.max(5, totalInteractions * 0.3)\n? '🟡'\n: '🔴';\n\nconst tip = (label) => {\nconst l = label.toLowerCase();\nif (l.includes('filtros')) return 'Valida tipificación y User ID antes de cerrar.';\nif (l.includes('macro')) return 'Confirma que la macro aplica al caso.';\nif (l.includes('contexto')) return 'Revisa todo el historial antes de responder.';\nif (l.includes('empatía')) return 'Reconoce el contexto del usuario primero.';\nreturn 'Refuerza este punto antes de cerrar.';\n};\n\nconst topCriteriaText = topCriteria.map(c =>\n`• *${c.label}* — ${c.percent.toFixed(1)}%\\n  :wrench: _${tip(c.label)}_`\n).join('\\n\\n');\n\nconst agentImpactText = agentBlocks.map(b =>\nb.main\n? `• *${b.agent}* — ${b.main.label} (${b.main.percent.toFixed(1)}%)\\n  :wrench: _${tip(b.main.label)}_`\n: `• *${b.agent}* — sin oportunidades críticas`\n).join('\\n\\n');\n\nconst autofailsText = autofails.length\n? autofails.map(a => `• *${a.agent}*: ${a.criterion}`).join('\\n')\n: '• No se identificaron auto fails.';\n\nconst bogotaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));\nconst day = bogotaNow.getDay();\nconst diffToMonday = day === 0 ? 6 : day - 1;\n\nconst currentMonday = new Date(bogotaNow);\ncurrentMonday.setDate(bogotaNow.getDate() - diffToMonday);\n\nconst previousMonday = new Date(currentMonday);\npreviousMonday.setDate(currentMonday.getDate() - 7);\n\nconst previousSunday = new Date(previousMonday);\npreviousSunday.setDate(previousMonday.getDate() + 6);\n\nconst formatDate = (d) => d.toLocaleDateString('es-CO', {\ntimeZone: 'America/Bogota',\nday: 'numeric',\nmonth: 'long',\nyear: 'numeric',\n});\n\nconst weekRange = `${formatDate(previousMonday)} al ${formatDate(previousSunday)}`;\n\nconst reportDateShort = bogotaNow.toLocaleDateString('en-US', {\ntimeZone: 'America/Bogota',\nmonth: '2-digit',\nday: '2-digit',\n});\n\nconst slackText = `:bar_chart: *Resultados última semana:*\n:date: *Semana evaluada:* ${weekRange}\n\n*QA Score:* ${avgScore.toFixed(2)}% ${scoreEmoji}\n\n*Oportunidades:* ${totalIncorrect} ${opportunityEmoji}\n\n*Auditorías:* ${totalInteractions} (${auditsPerAgent.toFixed(1)} por agente)\n\n:triangular_flag_on_post: *Top oportunidades*\n${topCriteriaText}\n\n:busts_in_silhouette: *Foco principal por agente*\n${agentImpactText}\n\n:rotating_light: *Autofails*\n${autofailsText}\n\nNo olviden dejar su reacción para confirmar que dieron una ojeada por acá.\n\ncc. <!subteam^S042S3Z88KS>`;\n\nreturn [{\njson: {\nslackText,\nrowCount: totalInteractions,\nweekRange,\ntotalInteractions,\navgScore: Number(avgScore.toFixed(2)),\ntotalIncorrect,\nslackChannel: CONFIG.slackChannel,\ncurrentSheetName: CONFIG.currentSheetName,\nhistoricalSheetName: CONFIG.historicalSheetName,\nreportDateShort,\n}\n}];\n"
+      },
+      "name": "Prepare QA Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        -192
+      ],
+      "id": "8ddf0e22-8286-4fae-94bd-f3b96d63bbf0"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA",
+          "mode": "list",
+          "cachedResultName": "QA_automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "QA_Resultados",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit#gid=0"
+        },
+        "options": {}
+      },
+      "name": "Read Rows For Archive",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        2064,
+        -192
+      ],
+      "id": "358e65e5-4859-4368-9e4d-386f5b4bf13f",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QkrXQqJxVonuOknT",
+          "name": "Active QA Workflow Automation"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA",
+          "mode": "list",
+          "cachedResultName": "QA_automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1886028431,
+          "mode": "list",
+          "cachedResultName": "QA_Historico",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit#gid=1886028431"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CX Specialist",
+              "displayName": "CX Specialist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Conversation ID",
+              "displayName": "Conversation ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Interaction Date",
+              "displayName": "Interaction Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Proceso",
+              "displayName": "Proceso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Sub Proceso",
+              "displayName": "Sub Proceso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Detalle Proceso",
+              "displayName": "Detalle Proceso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente de cx saluda al cliente utilizando el branding de la empresa?",
+              "displayName": "¿El agente de cx saluda al cliente utilizando el branding de la empresa?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente fue empático durante toda la interacción y/o demostró ayuda al cliente?",
+              "displayName": "¿El agente fue empático durante toda la interacción y/o demostró ayuda al cliente?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente revisó y consideró toda la información previamente enviada por el usuario, evitando preguntas repetidas y consultando contactos anteriores (chats, emails, etc.)?",
+              "displayName": "¿El agente revisó y consideró toda la información previamente enviada por el usuario, evitando preguntas repetidas y consultando contactos anteriores (chats, emails, etc.)?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente realizó preguntas suficientes y solicitó la información necesaria para entender completamente la situación del usuario y cómo resolverla (por ejemplo, en MGM: solicitar el correo de la persona referida)?",
+              "displayName": "¿El agente realizó preguntas suficientes y solicitó la información necesaria para entender completamente la situación del usuario y cómo resolverla (por ejemplo, en MGM: solicitar el correo de la persona referida)?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente resolvió correctamente el requerimiento del usuario y utilizó la macro adecuada para comunicar la solución?",
+              "displayName": "¿El agente resolvió correctamente el requerimiento del usuario y utilizó la macro adecuada para comunicar la solución?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente redactó los mensajes con un máximo de 2 errores ortográficos, gramaticales o de puntuación?",
+              "displayName": "¿El agente redactó los mensajes con un máximo de 2 errores ortográficos, gramaticales o de puntuación?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente completó correctamente los filtros del caso (chat o email) y agregó el User ID en el perfil del usuario en Freshdesk, según el tipo de solicitud?",
+              "displayName": "¿El agente completó correctamente los filtros del caso (chat o email) y agregó el User ID en el perfil del usuario en Freshdesk, según el tipo de solicitud?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente creó correctamente el ticket de email desde Freshdesk, documentó el caso con notas internas y brindó una respuesta oportuna al usuario (ej. usando \"Waiting on internal team\")?",
+              "displayName": "¿El agente creó correctamente el ticket de email desde Freshdesk, documentó el caso con notas internas y brindó una respuesta oportuna al usuario (ej. usando \"Waiting on internal team\")?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente aplicó correctamente el protocolo de warnings (3) ante lenguaje inapropiado del usuario, antes de proceder con el bloqueo?",
+              "displayName": "¿El agente aplicó correctamente el protocolo de warnings (3) ante lenguaje inapropiado del usuario, antes de proceder con el bloqueo?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente respondió al usuario en un tiempo menor o igual a 5 minutos, asegurando una atención oportuna y ágil?",
+              "displayName": "¿El agente respondió al usuario en un tiempo menor o igual a 5 minutos, asegurando una atención oportuna y ágil?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente ofreció ayuda adicional y confirmó que el usuario no tenía más dudas antes de cerrar el caso (excluyendo situaciones de bloqueo)?",
+              "displayName": "¿El agente ofreció ayuda adicional y confirmó que el usuario no tenía más dudas antes de cerrar el caso (excluyendo situaciones de bloqueo)?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "¿El agente cerró el chat de forma adecuada y respetuosa, utilizando la macro de cierre correspondiente?",
+              "displayName": "¿El agente cerró el chat de forma adecuada y respetuosa, utilizando la macro de cierre correspondiente?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "🚩Autofails  [¿El agente cerró el chat sin brindar respuesta ni resolución al usuario?]",
+              "displayName": "🚩Autofails  [¿El agente cerró el chat sin brindar respuesta ni resolución al usuario?]",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "🚩Autofails  [¿El agente respondió de forma no profesional, utilizando lenguaje inapropiado, tono irónico, o gestionó mal el protocolo ante usuarios con mal comportamiento (ej. no aplicar /lenguaje antes de bloquear o repetir mensajes sin contexto)?]",
+              "displayName": "🚩Autofails  [¿El agente respondió de forma no profesional, utilizando lenguaje inapropiado, tono irónico, o gestionó mal el protocolo ante usuarios con mal comportamiento (ej. no aplicar /lenguaje antes de bloquear o repetir mensajes sin contexto)?]",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "🚩Autofails  [¿El agente bloqueó al usuario sin justificación válida y no reportó el caso en el canal #cx-team?]",
+              "displayName": "🚩Autofails  [¿El agente bloqueó al usuario sin justificación válida y no reportó el caso en el canal #cx-team?]",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "🚩Autofails  [¿El agente no tipificó el chat al finalizar la conversación, incumpliendo el proceso establecido?]",
+              "displayName": "🚩Autofails  [¿El agente no tipificó el chat al finalizar la conversación, incumpliendo el proceso establecido?]",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Feedback",
+              "displayName": "Feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "#REF!",
+              "displayName": "#REF!",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Append to Historical Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        2256,
+        -192
+      ],
+      "id": "6fe7e490-b3d9-4e3f-b3d5-61aec861db36",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QkrXQqJxVonuOknT",
+          "name": "Active QA Workflow Automation"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AJZCN3DNU",
+          "mode": "id"
+        },
+        "text": "={{ '📊 Weekly QA Results - ' + $json.reportDateShort }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1728,
+        -192
+      ],
+      "id": "c014d347-eca9-4c29-8b85-7875e5d6d3ad",
+      "name": "Send message in channel",
+      "webhookId": "d3c7743e-11df-411e-88c2-684f86ef5de6",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "cU5QGErNRoBn4kit",
+          "name": "ACTIVE QA Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AJZCN3DNU",
+          "mode": "id"
+        },
+        "text": "={{ $('Prepare QA Report').item.json.slackText }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $('Send message in channel').item.json.message.ts }}"
+            }
+          },
+          "mrkdwn": true
+        }
+      },
+      "name": "Send to thread",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1888,
+        -192
+      ],
+      "id": "690f9440-94f2-4865-a88b-f2334ee10153",
+      "webhookId": "7c21a1d6-38c0-45fe-8c4d-cecb1bb57022",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "cU5QGErNRoBn4kit",
+          "name": "ACTIVE QA Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "__rl": true,
+          "value": "1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA",
+          "mode": "list",
+          "cachedResultName": "QA_automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "QA_Resultados",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1G3GEubAfBhKJpCFmQOHtS1ZjDN67ZfwDh1nv-5RbxCA/edit#gid=0"
+        },
+        "keepFirstRow": true
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2448,
+        -192
+      ],
+      "id": "4fc12a1e-a009-453c-953c-12c05f7ae1ae",
+      "name": "Clear sheet1",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QkrXQqJxVonuOknT",
+          "name": "Active QA Workflow Automation"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read All QA Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All QA Rows": {
+      "main": [
+        [
+          {
+            "node": "Prepare QA Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare QA Report": {
+      "main": [
+        [
+          {
+            "node": "Send message in channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Rows For Archive": {
+      "main": [
+        [
+          {
+            "node": "Append to Historical Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Historical Sheet": {
+      "main": [
+        [
+          {
+            "node": "Clear sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send message in channel": {
+      "main": [
+        [
+          {
+            "node": "Send to thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to thread": {
+      "main": [
+        [
+          {
+            "node": "Read Rows For Archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear sheet1": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b847d44b-fe83-4762-94ae-ec1c99b6f9ff",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cbbb8f38d1351864ff04fa40f28b5e686f08b80b4ea037e136335312231e256c"
+  },
+  "id": "9ZLjKtSydLxAIyaM",
+  "tags": []
+}
