@@ -1,0 +1,1712 @@
+{
+  "name": "Draftea - Feedback Users Automation Full version",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": [
+          "message"
+        ],
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "name": "Mensaje en canal",
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        7216,
+        4016
+      ],
+      "id": "8fb953d5-0e91-4601-95c8-c3c25f2c7d4b",
+      "webhookId": "4c59f25e-a7b1-43aa-a63d-4f2b7e4a9d4e",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "7a317e8a-4cd2-46e3-bec6-99d33d7060dd",
+              "leftValue": "={{ $json.event_ts }}",
+              "rightValue": "={{ $json.ts }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.subtype }}",
+              "rightValue": "message_changed",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "id": "a99c4e89-5239-4691-8931-c0abbc6e5758"
+            },
+            {
+              "id": "bad2ab91-9e58-4fa9-a440-aeeea55d80b3",
+              "leftValue": "={{ $json.bot_id }}",
+              "rightValue": "YOUR_SLACK_BOT_ID",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.thread_ts }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              },
+              "id": "64cd1cef-07f6-4bf7-a988-f347e0e496f6"
+            },
+            {
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "Email:",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "id": "53b9f56d-d08e-43bd-a08f-6e731b0c1cce"
+            },
+            {
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "Asunto:",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "id": "d8730965-4175-427e-9fb3-5eb01ff142e7"
+            },
+            {
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "Feedback:",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "id": "8ea727bf-a6bc-4a7c-b178-d7e307533771"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        7376,
+        4016
+      ],
+      "id": "d34136c7-c6b3-476d-90b6-da28030989ca"
+    },
+    {
+      "parameters": {},
+      "name": "No Operation, do nothing",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        7584,
+        3856
+      ],
+      "id": "19c57f7e-3c7c-46ab-b225-8057441ba0dd"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const text = item.json.text || '';\n  \n  // Buscar en texto plano primero con el patrón Email:\n  const emailLineMatch = text.match(/Email:\\s*<?(?:mailto:)?([A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,})>?/i);\n  if (emailLineMatch) {\n    return { json: { ...item.json, extracted_email: emailLineMatch[1] } };\n  }\n  \n  // Fallback: buscar en blocks de Slack el primer link después de \"Email:\"\n  const blocks = item.json.blocks || [];\n  let foundEmailLabel = false;\n  let extracted_email = null;\n  \n  for (const block of blocks) {\n    for (const section of (block.elements || [])) {\n      for (const el of (section.elements || [])) {\n        if (el.type === 'text' && el.text.includes('Email:')) {\n          foundEmailLabel = true;\n        }\n        if (foundEmailLabel && el.type === 'link' && el.url?.startsWith('mailto:')) {\n          extracted_email = el.url.replace('mailto:', '');\n          break;\n        }\n      }\n      if (extracted_email) break;\n    }\n    if (extracted_email) break;\n  }\n  \n  return { json: { ...item.json, extracted_email } };\n});"
+      },
+      "name": "Extract Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7584,
+        4000
+      ],
+      "id": "49be3f63-7f31-4126-a87c-6d2878c4288e"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://app.hex.tech/api/v1/projects/YOUR_HEX_PROJECT_ID/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer YOUR_HEX_API_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inputParams\": {\n    \"user_email\": \"{{$json.extracted_email}}\",\n    \"callback_url\": \"{{ $resumeWebhookUrl }}\",\n    \"channel\": \"{{$json.channel}}\",\n    \"thread_ts\": \"{{$json.ts}}\"\n  }\n}",
+        "options": {}
+      },
+      "name": "Hex - Get user info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7760,
+        4000
+      ],
+      "id": "02874450-c7bb-44b2-80eb-903b89e3d5ae",
+      "notes": "PENDIENTE: Reemplazar el Project ID por el del nuevo proyecto mega de HEX que incluye métricas + bloqueos + KYC"
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        7264,
+        4192
+      ],
+      "webhookId": "wait-hex-metrics",
+      "id": "3cc13a12-cd93-4385-abb1-1948bc129f1c"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json.body || {};\nconst user = data.user || {};\nconst osb = data.osb_metrics || {};\nconst block = data.block_status || {};\nconst identity = data.identity || {};\nconst aml = data.aml_thresholds || {};\nconst igaming = data.igaming_metrics || {};\n\nreturn [{\n  json: {\n    channel: data.channel,\n    thread_ts: data.thread_ts,\n    email: data.user_email || user.email || 'N/D',\n    USER_ID: user.user_id || 'N/D',\n    ENTRY_FEES: osb.entry_fees || 'N/D',\n    PRIZES: osb.prizes || 'N/D',\n    NET_REVENUE: osb.net_revenue || 'N/D',\n    TICKETS: osb.tickets || 'N/D',\n    FIRST_TICKET: osb.first_ticket || 'N/D',\n    NIVEL: osb.loyalty_tier || 'N/D',\n    USER_STATUS: block.user_status || 'N/D',\n    IS_BLOCKED: block.is_blocked || false,\n    IS_IN_REVIEW: block.is_in_review || false,\n    BLOCK_TYPE: block.block_type || 'N/A',\n    REVIEW_STATUS: block.review_status || 'N/A',\n    REVIEW_COMMENT: block.review_comment || 'N/A',\n    BLOCKED_COMMENT: block.blocked_comment || 'N/A',\n    IDENTITY_VALIDATED: identity.identity_validated || false,\n    IDENTITY_STATUS: identity.identity_status || 'N/A',\n    IDENTITY_ATTEMPTS: identity.identity_attempts || 0,\n    HAS_PENDING_THRESHOLD: aml.has_pending_threshold || false,\n    THRESHOLD_TYPE: aml.threshold_type || 'N/A',\n    THRESHOLD_STATUS: aml.threshold_status || 'N/A',\n    IGAMING_ROUNDS: igaming.rounds_played ?? 'N/D',\n    IGAMING_PRIZES: igaming.prizes || 'N/D',\n    IGAMING_NET_REVENUE: igaming.net_revenue || 'N/D',\n    IGAMING_FIRST_ROUND: igaming.first_round || 'N/D'\n  }\n}];"
+      },
+      "name": "Extract HEX data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7456,
+        4192
+      ],
+      "id": "d2568a8a-464f-47a2-bfcf-509ba1b66539",
+      "notes": "PENDIENTE: Ajustar nombres de campos según lo que devuelva el nuevo proyecto de HEX"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst email = data.email || 'N/D';\n\nconst hasIgaming = data.IGAMING_ROUNDS !== 'NO' || data.IGAMING_PRIZES !== 'NO';\nconst igamingSection = hasIgaming\n  ? `\\n\\n━━━ 🎮 *iGaming* ━━━\\n🔄 *Rounds:* ${data.IGAMING_ROUNDS}\\n🎁 *Prizes:* ${data.IGAMING_PRIZES}\\n📉 *Net Rev:* ${data.IGAMING_NET_REVENUE}\\n📅 *First Round:* ${data.IGAMING_FIRST_ROUND}`\n  : `\\n\\n━━━ 🎮 *iGaming* ━━━\\nSin actividad`;\n\nconst reply_text = `📊 *User Metrics* — ${email}\n🆔 *User ID:* ${data.USER_ID || 'N/D'}\n\n━━━ ⚽ *Sports Betting (OSB)* ━━━\n💰 *Entry Fees:* ${data.ENTRY_FEES || 'N/D'}\n🎁 *Prizes:* ${data.PRIZES || 'N/D'}\n📉 *Net Revenue:* ${data.NET_REVENUE || 'N/D'}\n🎟 *Tickets:* ${data.TICKETS || 'N/D'}\n📅 *First Ticket:* ${data.FIRST_TICKET || 'N/D'}\n🏆 *Nivel:* ${data.NIVEL || 'N/D'}${igamingSection}`;\n\nreturn [{ json: { ...data, reply_text } }];"
+      },
+      "name": "Build Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7664,
+        4192
+      ],
+      "id": "45a918c8-7da2-4d94-b701-b951c5258217"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "={{ $json.reply_text }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Reply in Slack Thread",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        7248,
+        4384
+      ],
+      "id": "410efbdb-207b-49b2-ad98-b6cf481dc8e4",
+      "webhookId": "45b51cdb-40f1-41b5-a268-a2ede68079bd",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const slackData = $('Mensaje en canal').item.json;\nconst hexData = $('Extract HEX data').item.json;\nconst text = slackData.text || '';\n\nconst emailMatch = text.match(/Email:\\s*<?([^>\\n|]+)>?/);\nconst email_usuario = emailMatch ? emailMatch[1].trim().replace(/[<>]/g,'') : hexData.email || '';\n\nconst asuntoMatch = text.match(/Asunto:\\s*([^\\n]+)/);\nconst asunto = asuntoMatch ? asuntoMatch[1].trim() : '';\n\nconst feedbackMatch = text.match(/Feedback:\\s*([\\s\\S]+)$/);\nconst feedback_text = feedbackMatch ? feedbackMatch[1].trim() : '';\n\nconst username = slackData.username || '';\nconst numMatch = username.match(/#(\\d+)/);\nconst numero_feedback = numMatch ? numMatch[1] : 'N/A';\n\nreturn [{\n  json: {\n    email_usuario,\n    asunto,\n    feedback_text,\n    numero_feedback,\n    channel: hexData.channel || slackData.channel,\n    thread_ts: hexData.thread_ts || slackData.ts,\n    nivel: hexData.NIVEL,\n    primer_ticket: hexData.FIRST_TICKET,\n    entry_fees: hexData.ENTRY_FEES,\n    net_revenue: hexData.NET_REVENUE,\n    tickets: hexData.TICKETS,\n    user_id: hexData.USER_ID,\n    user_status: hexData.USER_STATUS,\n    is_blocked: hexData.IS_BLOCKED,\n    is_in_review: hexData.IS_IN_REVIEW,\n    block_type: hexData.BLOCK_TYPE,\n    blocked_comment: hexData.BLOCKED_COMMENT,\n    review_comment: hexData.REVIEW_COMMENT,\n    identity_validated: hexData.IDENTITY_VALIDATED,\n    identity_status: hexData.IDENTITY_STATUS,\n    identity_attempts: hexData.IDENTITY_ATTEMPTS,\n    has_pending_threshold: hexData.HAS_PENDING_THRESHOLD,\n    threshold_type: hexData.THRESHOLD_TYPE,\n    threshold_status: hexData.THRESHOLD_STATUS\n  }\n}];"
+      },
+      "name": "Preparar datos feedback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7440,
+        4384
+      ],
+      "id": "8b0bc48e-8f83-4976-ba54-7816a6dcf37c"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tipo }}",
+                    "rightValue": "RESPUESTA_AUTOMATICA",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "3f791cf8-3faa-45e2-a17e-3e627c3d1ed5"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tipo }}",
+                    "rightValue": "ESCALAR_CX",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "434ae04f-b195-423f-a2e7-e85ce9f8fb7e"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tipo }}",
+                    "rightValue": "BLOQUEO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6592c863-3f7a-49ba-89eb-8a5970ef614c"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "283b913a-2363-4750-a24d-4da47b22287f",
+                    "leftValue": "={{ $json.tipo }}",
+                    "rightValue": "MENCIONA_BLOQUEO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route por Tipo",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        7840,
+        4368
+      ],
+      "id": "0bec3cf9-8db2-4e1e-8aa3-a708131ea297",
+      "notes": "Output 0: RESPUESTA_AUTOMATICA | Output 1: ESCALAR_CX | Output 2: BLOQUEO | Output 3: ESCALAR_FRAUD"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.subtipo }}",
+                    "rightValue": "kyc",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b51c4724-d6f7-4bc4-9a6e-c8f7fb3b5048"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "1be47228-5f51-4993-9f6e-71f4a46373a3",
+                    "leftValue": "={{ $json.subtipo }}",
+                    "rightValue": "in_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "name": "Route Bloqueo",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        8048,
+        4368
+      ],
+      "id": "528e4d5d-81e4-4fb9-aba4-29d99b449580",
+      "notes": "Output 0: is_in_review=true -> #fraud-review | Output 1: blocked_comment contiene kyc -> #feedback-users-cx | Fallback: correo automatico"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_FRESHDESK_SUBDOMAIN.freshdesk.com/api/v2/tickets",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Basic YOUR_FRESHDESK_API_KEY=="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"subject\":\"Tu cuenta en Draftea\",\"description\":\"<table width=\\\"100%\\\" cellpadding=\\\"0\\\" cellspacing=\\\"0\\\" border=\\\"0\\\" style=\\\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;\\\"><tr><td align=\\\"center\\\" style=\\\"padding:32px 40px 12px 40px;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_500/LOGO_DRAFTEA_COLOR_email_f3ftkr.png\\\" alt=\\\"Draftea\\\" width=\\\"220\\\" style=\\\"display:block;max-width:220px;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><div style=\\\"border-top:2px solid #7C3AED;width:55%;margin:0 auto;\\\"></div></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 14px 40px;\\\"><p style=\\\"margin:0;font-size:16px;font-weight:bold;color:#111111;\\\">Hola</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#444444;text-align:center;line-height:1.6;\\\">Gracias por escribirnos. Tu experiencia es nuestra prioridad y estamos aqu&iacute; para brindarte la mejor atenci&oacute;n.</p></td></tr><tr><td style=\\\"padding:0 40px 32px 40px;\\\"><div style=\\\"font-size:14px;color:#333333;line-height:1.75;text-align:left;\\\">En Draftea nos comprometemos a mantener un ambiente justo y seguro para todos. Despu&eacute;s de analizar tu caso a detalle, hemos determinado que se ha producido una o m&aacute;s infracciones de los t&eacute;rminos establecidos.<br><br>Como se indica en nuestros T&eacute;rminos y Condiciones, nos reservamos el derecho de limitar o suspender el acceso a usuarios que no cumplan con las pol&iacute;ticas de la plataforma, incluso si no detallamos p&uacute;blicamente cada infracci&oacute;n espec&iacute;fica.<br><br>Por este motivo hemos realizado el bloqueo de tu cuenta de manera definitiva. Sabemos que tiene un impacto en tu balance existente en la aplicaci&oacute;n. Te compartimos el link a los t&eacute;rminos y condiciones donde detallamos esta situaci&oacute;n en el apartado 2.3 Bloqueo y/o suspensi&oacute;n de la Cuenta de Jugador: <a href=\\\"https://www.draftea.com/page/terminos-y-condiciones\\\">T&eacute;rminos y condiciones</a></div></td></tr><tr><td style=\\\"padding:0 40px 0 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#333333;line-height:1.7;\\\">Saludos,<br><strong>Equipo Draftea.</strong></p></td></tr><tr><td style=\\\"height:32px;\\\"></td></tr><tr><td style=\\\"padding:24px 40px 16px 40px;border-top:1px solid #eeeeee;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:12px;color:#888888;text-align:center;line-height:1.7;\\\">Valoramos tus comentarios y estamos constantemente buscando formas de mejorar nuestros servicios. No dudes en contactarnos, ¡queremos saber de ti!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:13px;font-weight:bold;color:#111111;\\\">¡Gracias por elegir Draftea!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_100/DRAFTEA_email_ysn4oq.png\\\" alt=\\\"D\\\" width=\\\"36\\\" style=\\\"display:block;margin:0 auto;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:6px 40px 24px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:11px;color:#bbbbbb;text-align:center;\\\">&copy;Draftea. Todos los derechos reservados.</p></td></tr></table>\",\"email\":\"{{ $json.email_usuario.replace('mailto:', '') }}\",\"priority\":2,\"status\":5,\"source\":10,\"type\":\"Comentarios/Sugerencias\",\"email_config_id\":YOUR_FRESHDESK_EMAIL_CONFIG_ID,\"tags\":[\"slack-feedback\",\"bloqueo\"],\"responder_id\":YOUR_FRESHDESK_RESPONDER_ID}",
+        "options": {}
+      },
+      "name": "Freshdesk - Crear Ticket Bloqueo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8288,
+        4448
+      ],
+      "id": "7f08ab8a-d011-4408-ac3a-be1fa97429e1",
+      "notes": "Auth: Authorization: Basic [API_KEY_BASE64:X] — Para casos BLOQUEO que NO son in_review. Status 2 = Open para seguimiento."
+    },
+    {
+      "parameters": {
+        "jsCode": "const freshdeskResponse = $input.item.json;\nconst ticketId = freshdeskResponse.id;\nif (!ticketId) {\n  throw new Error('Freshdesk no devolvió ticket ID: ' + JSON.stringify(freshdeskResponse));\n}\nconst feedbackData = $('Clasificar Feedback').item.json;\nreturn [{\n  json: {\n    ...feedbackData,\n    freshdesk_ticket_id: ticketId,\n    freshdesk_ticket_url: `https://draftea.freshdesk.com/a/tickets/${ticketId}`\n  }\n}];"
+      },
+      "name": "Extraer Ticket ID Bloqueo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8480,
+        4448
+      ],
+      "id": "9fbe11b8-d04a-452f-b0c6-1524ae60a6de"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "={{ '✅ Correo enviado automáticamente.\\n🎫 Ticket: https://draftea.freshdesk.com/a/tickets/' + $json.freshdesk_ticket_id }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Slack - Confirmar Thread Auto",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        9360,
+        3728
+      ],
+      "id": "c36daaaf-ed11-4c94-9e17-2d47b67f499b",
+      "webhookId": "649af1af-dc18-437d-a4d7-3760564fbccd",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "={{ '✅ Correo de bloqueo enviado automáticamente.\\n🎫 Ticket: https://draftea.freshdesk.com/a/tickets/' + $json.freshdesk_ticket_id }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Slack - Confirmar Thread Bloqueo",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        8672,
+        4448
+      ],
+      "id": "0b36ece5-b484-426d-a4d4-7ce537498ae4",
+      "webhookId": "0df31360-e9a1-4bad-b443-c0ec888c28c2",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel }}",
+          "mode": "id"
+        },
+        "text": "={{ '👋 <!subteam^YOUR_SLACK_SUBTEAM_ID> este caso requiere revisión manual.\\n🔍 Motivo: ' + $json.subtipo }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "=={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Slack - Alerta CX",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        8304,
+        3936
+      ],
+      "id": "6b4a34a3-8bc9-4e2e-bebc-77903e16df13",
+      "webhookId": "b2c58cbd-2fe4-44c0-bad2-cf994d9c2899",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      },
+      "notes": "Canal: #feedback-users-cx — canal nuevo dedicado solo para escalaciones de feedback users"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://draftea.freshdesk.com/api/v2/tickets",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Basic YOUR_FRESHDESK_API_KEY=="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"subject\":\"Tu cuenta en Draftea - Feedback\",\"description\":\"<table width=\\\"100%\\\" cellpadding=\\\"0\\\" cellspacing=\\\"0\\\" border=\\\"0\\\" style=\\\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;\\\"><tr><td align=\\\"center\\\" style=\\\"padding:32px 40px 12px 40px;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_500/LOGO_DRAFTEA_COLOR_email_f3ftkr.png\\\" alt=\\\"Draftea\\\" width=\\\"220\\\" style=\\\"display:block;max-width:220px;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><div style=\\\"border-top:2px solid #7C3AED;width:55%;margin:0 auto;\\\"></div></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 14px 40px;\\\"><p style=\\\"margin:0;font-size:16px;font-weight:bold;color:#111111;\\\">Hola</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#444444;text-align:center;line-height:1.6;\\\">Gracias por escribirnos. Tu experiencia es nuestra prioridad y estamos aqu&iacute; para brindarte la mejor atenci&oacute;n.</p></td></tr><tr><td style=\\\"padding:0 40px 32px 40px;\\\"><div style=\\\"font-size:14px;color:#333333;line-height:1.75;text-align:left;\\\">Gracias por tu paciencia.<br><br>Entendemos lo importante que es para ti esta revisi&oacute;n y queremos que sepas que el equipo contin&uacute;a trabajando en ello para darte una respuesta lo antes posible.<br><br>Ya estamos dando seguimiento cercano a tu caso, y nos han indicado que entre esta semana o, a m&aacute;s tardar, la pr&oacute;xima, deber&iacute;as recibir una actualizaci&oacute;n sobre el estado de tu cuenta.<br><br>Te recomendamos estar pendiente de tu correo electr&oacute;nico, que ser&aacute; el canal por el que te contactar&aacute;n directamente. Si tienes alguna otra duda, con gusto te ayudamos.</div></td></tr><tr><td style=\\\"padding:0 40px 0 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#333333;line-height:1.7;\\\">Saludos,<br><strong>Equipo Draftea.</strong></p></td></tr><tr><td style=\\\"height:32px;\\\"></td></tr><tr><td style=\\\"padding:24px 40px 16px 40px;border-top:1px solid #eeeeee;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:12px;color:#888888;text-align:center;line-height:1.7;\\\">Valoramos tus comentarios y estamos constantemente buscando formas de mejorar nuestros servicios. No dudes en contactarnos, &iexcl;queremos saber de ti!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:13px;font-weight:bold;color:#111111;\\\">&iexcl;Gracias por elegir Draftea!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_100/DRAFTEA_email_ysn4oq.png\\\" alt=\\\"D\\\" width=\\\"36\\\" style=\\\"display:block;margin:0 auto;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:6px 40px 24px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:11px;color:#bbbbbb;text-align:center;\\\">&copy;Draftea. Todos los derechos reservados.</p></td></tr></table>\",\"email\":\"{{ $json.email_usuario.replace('mailto:', '') }}\",\"priority\":4,\"status\":5,\"source\":10,\"type\":\"Comentarios/Sugerencias\",\"email_config_id\":YOUR_FRESHDESK_EMAIL_CONFIG_ID,\"tags\":[\"slack-feedback\",\"in-review\"],\"responder_id\":YOUR_FRESHDESK_RESPONDER_ID}",
+        "options": {}
+      },
+      "name": "Freshdesk - Ticket InReview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8304,
+        4256
+      ],
+      "id": "7ea6f01f-f291-4ab0-92e4-75f0112c5819",
+      "notes": "Crea ticket urgente para in_review antes de alertar a #fraud-review"
+    },
+    {
+      "parameters": {
+        "jsCode": "const freshdeskResponse = $input.item.json;\nconst ticketId = freshdeskResponse.id;\n\nif (!ticketId) {\n  throw new Error('Freshdesk no devolvió ticket ID InReview: ' + JSON.stringify(freshdeskResponse));\n}\n\nconst feedbackData = $('Clasificar Feedback').item.json;\n\nreturn [{\n  json: {\n    ...feedbackData,\n    freshdesk_ticket_id: ticketId,\n    freshdesk_ticket_url: `https://draftea.freshdesk.com/a/tickets/${ticketId}`\n  }\n}];"
+      },
+      "name": "Extraer Ticket InReview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8528,
+        4256
+      ],
+      "id": "03a48499-178c-498f-aa7a-d9fa1ff051cd"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=<@YOUR_USER_ID_1> <@YOUR_USER_ID_2> ¡Hola team! Caso Feedback Users requiere Fraud Review 🚨\n\n📋 *Cliente:* {{ $('Extraer Ticket InReview').item.json.email_usuario.replace('mailto:', '') }}\n🎫 *Ticket:* https://draftea.freshdesk.com/a/tickets/{{ $('Extraer Ticket InReview').item.json.freshdesk_ticket_id }}",
+        "otherOptions": {}
+      },
+      "name": "Slack - Alerta InReview",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        8992,
+        4256
+      ],
+      "id": "5b671938-ec17-4e2f-b257-1f9d29d6fc6e",
+      "webhookId": "72972b93-a337-4dcc-bc8a-8804e5a9189e",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      },
+      "notes": "In-Review va a #fraud-review con menciones a Geral (YOUR_USER_ID_1) y Franco (YOUR_USER_ID_2)"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel }}",
+          "mode": "id"
+        },
+        "text": "=={{ '👋 <!subteam^YOUR_SLACK_SUBTEAM_ID> este caso requiere revisión manual.\\n🔍 Motivo: Bloqueo KYC - revisar cuentas asociadas en Retool' }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "=={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Slack - Alerta KYC",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        8304,
+        4096
+      ],
+      "id": "92a060f4-8244-47a3-b70c-32441115ebdd",
+      "webhookId": "d103d506-8350-4943-9c77-b58b7c2926fa",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      },
+      "notes": "KYC va a #feedback-users-cx para que CX revise cuentas asociadas en Retool"
+    },
+    {
+      "parameters": {
+        "amount": 45
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        8448,
+        3728
+      ],
+      "id": "4acee8ff-acd7-47a5-bd88-92ae41802ce4",
+      "name": "Wait1",
+      "webhookId": "d0b12d4c-4497-4621-b1ef-5d1f94c53c02"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.openai.com/v1/threads/{{ $('OpenAI - Redactar Respuesta').item.json.thread_id }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "order",
+              "value": "desc"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "OpenAI-Beta",
+              "value": "assistants=v2"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        8624,
+        3728
+      ],
+      "id": "08208de8-e723-4db4-84d6-329e8bd04b09",
+      "name": "GET - AI Messages",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_N8N_OPENAI_CREDENTIAL_ID",
+          "name": "API Lucho no borrar feedback user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://draftea.freshdesk.com/api/v2/tickets",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Basic U3BJNDlmRUljb2hWTlc5cnhsVjpY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"subject\":\"Respuesta a tu feedback - Draftea\",\"description\":\"<table width=\\\"100%\\\" cellpadding=\\\"0\\\" cellspacing=\\\"0\\\" border=\\\"0\\\" style=\\\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;\\\"><tr><td align=\\\"center\\\" style=\\\"padding:32px 40px 12px 40px;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_500/LOGO_DRAFTEA_COLOR_email_f3ftkr.png\\\" alt=\\\"Draftea\\\" width=\\\"220\\\" style=\\\"display:block;max-width:220px;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><div style=\\\"border-top:2px solid #7C3AED;width:55%;margin:0 auto;\\\"></div></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 14px 40px;\\\"><p style=\\\"margin:0;font-size:16px;font-weight:bold;color:#111111;\\\">Hola</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#444444;text-align:center;line-height:1.6;\\\">Gracias por escribirnos. Tu experiencia es nuestra prioridad y estamos aquí para brindarte la mejor atención.</p></td></tr><tr><td style=\\\"padding:0 40px 32px 40px;\\\"><div style=\\\"font-size:14px;color:#333333;line-height:1.75;text-align:left;\\\">{{ ($('Parsear Respuesta').first().json.email_body || '').replace(/\"/g, \"'\").replace(/\\n/g, ' ').replace(/\\r/g, '') }}</div></td></tr><tr><td style=\\\"padding:0 40px 0 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#333333;line-height:1.7;\\\">Saludos,<br><strong>Equipo Draftea.</strong></p></td></tr><tr><td style=\\\"height:32px;\\\"></td></tr><tr><td style=\\\"padding:24px 40px 16px 40px;border-top:1px solid #eeeeee;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:12px;color:#888888;text-align:center;line-height:1.7;\\\">Valoramos tus comentarios y estamos constantemente buscando formas de mejorar nuestros servicios. No dudes en contactarnos, ¡queremos saber de ti!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:13px;font-weight:bold;color:#111111;\\\">¡Gracias por elegir Draftea!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_100/DRAFTEA_email_ysn4oq.png\\\" alt=\\\"D\\\" width=\\\"36\\\" style=\\\"display:block;margin:0 auto;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:6px 40px 24px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:11px;color:#bbbbbb;text-align:center;\\\">©Draftea. Todos los derechos reservados.</p></td></tr></table>\",\"email\":\"{{ $json.email_usuario.replace('mailto:', '') }}\",\"priority\":2,\"status\":5,\"source\":10,\"type\":\"Comentarios/Sugerencias\",\"email_config_id\":YOUR_FRESHDESK_EMAIL_CONFIG_ID,\"tags\":[\"slack-feedback\"],\"responder_id\":YOUR_FRESHDESK_RESPONDER_ID}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        8992,
+        3728
+      ],
+      "id": "7b5800f1-cf41-4434-9932-a6ce5476fb6f",
+      "name": "Freshdesk - Enviar Respuesta"
+    },
+    {
+      "parameters": {
+        "jsCode": "const freshdeskResponse = $input.item.json;\nconst ticketId = freshdeskResponse.id;\nif (!ticketId) {\n  throw new Error('Freshdesk no devolvió ticket ID: ' + JSON.stringify(freshdeskResponse));\n}\nconst feedbackData = $('Parsear Respuesta').item.json;\nreturn [{\n  json: {\n    ...feedbackData,\n    freshdesk_ticket_id: ticketId,\n    freshdesk_ticket_url: `https://draftea.freshdesk.com/a/tickets/${ticketId}`\n  }\n}];"
+      },
+      "name": "Extraer Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9168,
+        3728
+      ],
+      "id": "ea2ede46-3ee4-4d89-9cbd-cbaf4ebae5ac"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Preparar datos feedback').item.json;\n\n// Sanitizar feedback_text para evitar caracteres que rompan JSON\ndata.feedback_text = (data.feedback_text || '')\n  .replace(/\\n/g, ' ')\n  .replace(/\\r/g, ' ')\n  .replace(/\\t/g, ' ')\n  .replace(/\"/g, \"'\");\n\nconst texto = data.feedback_text.toLowerCase();\n\n// Helpers para strings que llegan como \"NO\"/\"SI\"/\"true\"/\"false\"\nconst isTrue = (val) => val === true || val === 'true' || val === 'SI' || val === 'si';\nconst isBlocked = isTrue(data.is_blocked);\nconst isInReview = isTrue(data.is_in_review);\nconst blockedComment = (data.blocked_comment || '').toLowerCase();\n\n// ────────────────────────────────────────────\n// GRUPO 1 — BLOQUEO (prioridad máxima)\n// ────────────────────────────────────────────\nif (isBlocked && blockedComment.includes('kyc')) {\n  return [{ json: { ...data, tipo: 'BLOQUEO', subtipo: 'kyc' } }];\n}\nif (isBlocked) {\n  return [{ json: { ...data, tipo: 'BLOQUEO', subtipo: 'blocked' } }];\n}\nif (isInReview) {\n  return [{ json: { ...data, tipo: 'BLOQUEO', subtipo: 'in_review' } }];\n}\n\n// ────────────────────────────────────────────\n// GRUPO 2 — ESCALAR_CX (identidad siempre)\n// ────────────────────────────────────────────\nconst palabrasIdentidad = [\n  'identidad', 'mi ine', 'subir ine', 'foto ine', 'pasaporte', 'identificacion',\n  'verificación de identidad', 'verificacion de identidad',\n  'validación de identidad', 'validacion de identidad',\n  'verificar identidad', 'validar identidad', 'validar mi identidad',\n  'validar mi cuenta', 'verificar mi cuenta', 'verificar la cuenta', 'validar la cuenta', 'verificar mi identidad',\n  'subir mi ine', 'kyc', 'credencial'\n];\nif (palabrasIdentidad.some(p => texto.includes(p))) {\n  return [{ json: { ...data, tipo: 'ESCALAR_CX', subtipo: 'identidad' } }];\n}\n\n// ────────────────────────────────────────────\n// GRUPO 3 — MENCIONA_BLOQUEO\n// (usuario menciona bloqueo pero NO está bloqueado en HEX)\n// ────────────────────────────────────────────\nconst palabrasBloqueo = [\n  'bloquearon', 'bloqueada', 'bloqueado', 'bloqueo',\n  'bloquearon otra cuenta', 'bloquearon mi cuenta',\n  'bloqueo de cuenta', 'bloqueo cuenta'\n];\nif (!isBlocked && !isInReview && palabrasBloqueo.some(p => texto.includes(p))) {\n  return [{ json: { ...data, tipo: 'MENCIONA_BLOQUEO', subtipo: 'menciona_bloqueo' } }];\n}\n\n// ────────────────────────────────────────────\n// GRUPO 4 — RESPUESTA_AUTOMATICA\n// ────────────────────────────────────────────\nreturn [{ json: { ...data, tipo: 'RESPUESTA_AUTOMATICA', subtipo: 'general' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7648,
+        4384
+      ],
+      "id": "0c368e5f-c0e4-4ea1-aa65-d0bb0ed5a9d2",
+      "name": "Clasificar Feedback"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/threads/runs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "OpenAI-Beta",
+              "value": "assistants=v2"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assistant_id\": \"YOUR_OPENAI_ASSISTANT_ID\",\n  \"thread\": {\n    \"messages\": [{\n      \"role\": \"user\",\n      \"content\": \"Asunto: {{ $json.asunto }}\\nFeedback: {{ $json.feedback_text }}\\nNivel: {{ $json.nivel }}\\nEntry Fees: {{ $json.entry_fees }}\\nNet Revenue: {{ $json.net_revenue }}\\nTickets: {{ $json.tickets }}\\nUser Status: {{ $json.user_status }}\\nREGLA WRONG_INFORMATION: Si el asunto es WRONG_INFORMATION, NUNCA confirmes que se revisará o corregirá. Solo agradece y redirige al chat.\\nSUGERENCIAS Y NUEVOS DEPORTES: Si el usuario sugiere agregar un deporte, liga, torneo o feature nueva, responde agradeciendo la sugerencia con energía, dile que lo tendrán en cuenta y cierra. NUNCA sugieras contactar al chat de soporte en estos casos.\\nHORARIO SOPORTE: Cuando redirijas al chat de soporte, siempre incluye el horario de atención: Lunes a Viernes 9:30 a.m. - 10:30 p.m. y Sábados y domingos 10:00 a.m. - 7:00 p.m.\\nEMOJIS: Usa siempre 🚀 en vez de :rocket:\\nLONGITUD: Cada párrafo debe tener mínimo 2-3 oraciones completas y desarrolladas. No uses frases cortas de una sola línea.\"\n    }]\n  }\n}",
+        "options": {}
+      },
+      "name": "OpenAI - Redactar Respuesta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8304,
+        3728
+      ],
+      "id": "c127f8c2-041d-4c2e-ab63-9ba068b54770",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_N8N_HTTP_CREDENTIAL_ID",
+          "name": "Active Open AI API feedback"
+        },
+        "openAiApi": {
+          "id": "YOUR_N8N_OPENAI_CREDENTIAL_ID",
+          "name": "API Lucho no borrar feedback user"
+        }
+      },
+      "notes": "Auth: Generic Credential Type → HTTP Header Auth → Authorization: Bearer TU_OPENAI_API_KEY. Solo clasifica, NO redacta correo."
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json.data;\n\n// Buscar mensaje del assistant\nconst assistantMessage = data.find(m => m.role === 'assistant');\n\n// Si no respondió a tiempo\nif (!assistantMessage) {\n  const feedbackData = $('Clasificar Feedback').item.json;\n  return [{\n    json: {\n      ...feedbackData,\n      email_body: null,\n      subtipo: 'timeout_openai',\n      razon: 'OpenAI no respondió a tiempo'\n    }\n  }];\n}\n\nconst raw = assistantMessage.content[0].text.value;\n\n// Fix regex — quita apertura y cierre por separado\nconst clean = raw\n  .replace(/^```json\\s*/i, '')\n  .replace(/```\\s*$/i, '')\n  .trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(clean);\n} catch(e) {\n  parsed = {\n    email_body: clean,\n    razon: 'JSON malformado — usando texto directo'\n  };\n}\n\n// Formatear email_body\nlet emailBody = parsed.email_body || null;\nif (emailBody) {\n  emailBody = emailBody\n    .replace(/\\\\n/g, '\\n')\n    .replace(/\\s*\\|\\|\\|\\s*/g, '<SPLIT>')\n    .replace(/\\n\\n+/g, '<SPLIT>')\n    .replace(/\\. (¡|¿|[A-ZÁÉÍÓÚÑ])/g, '.<SPLIT>$1')\n    .replace(/¡Vamos con todo/g, '<SPLIT>¡Vamos con todo')\n    .split('<SPLIT>')\n    .map(p => p.trim())\n    .filter(p => p.length > 20)\n    .join('<br><br>');\n}\n\n// Tomar tipo y subtipo del nodo Clasificar Feedback\nconst feedbackData = $('Clasificar Feedback').item.json;\n\nreturn [{\n  json: {\n    ...feedbackData,\n    email_body: emailBody,\n    razon: parsed.razon || null\n  }\n}];"
+      },
+      "name": "Parsear Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8816,
+        3728
+      ],
+      "id": "45166744-ea82-4e35-b061-6e96d2cc35dd"
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Preparar datos feedback').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "white_check_mark"
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        9552,
+        3728
+      ],
+      "id": "4cfde32d-5736-4eb9-adba-fe52e31abdd7",
+      "name": "Add a reaction",
+      "webhookId": "692cb0f5-8467-48b6-9d94-1de4b2959379",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Preparar datos feedback').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "white_check_mark"
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        9184,
+        4256
+      ],
+      "id": "78805ec3-6967-48bd-bbbd-0934eb29d104",
+      "name": "Add a reaction1",
+      "webhookId": "d94fc840-e0d0-4d55-a707-6ab0c65f2bed",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Preparar datos feedback').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "white_check_mark"
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        8880,
+        4448
+      ],
+      "id": "2e6fd691-e122-4408-a2ab-191ee0ec6464",
+      "name": "Add a reaction2",
+      "webhookId": "4f65be4f-2cd1-405a-a9cd-c807aeccde5d",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "={{ '✅ Correo enviado automáticamente.\\n🎫 Ticket: https://draftea.freshdesk.com/a/tickets/' + $json.freshdesk_ticket_id }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Slack - Confirmar Thread Auto1",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        8752,
+        4256
+      ],
+      "id": "ae1c3eb8-f20b-471f-b28f-98011054d1e0",
+      "webhookId": "649af1af-dc18-437d-a4d7-3760564fbccd",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Preparar datos feedback').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "white_check_mark"
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        9008,
+        4656
+      ],
+      "id": "c1cbe731-89ba-4c7e-8f85-c3fc090ba931",
+      "name": "Add a reaction3",
+      "webhookId": "d94fc840-e0d0-4d55-a707-6ab0c65f2bed",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "={{ '✅ Correo enviado automáticamente.\\n🎫 Ticket: https://draftea.freshdesk.com/a/tickets/' + $json.freshdesk_ticket_id }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $json.thread_ts }}"
+            }
+          }
+        }
+      },
+      "name": "Slack - Confirmar Thread Auto2",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        8736,
+        4656
+      ],
+      "id": "081c6f68-ee0e-4499-8238-96e7748f558e",
+      "webhookId": "649af1af-dc18-437d-a4d7-3760564fbccd",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://draftea.freshdesk.com/api/v2/tickets",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Basic YOUR_FRESHDESK_API_KEY=="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"subject\":\"Tu cuenta en Draftea\",\"description\":\"<table width=\\\"100%\\\" cellpadding=\\\"0\\\" cellspacing=\\\"0\\\" border=\\\"0\\\" style=\\\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;\\\"><tr><td align=\\\"center\\\" style=\\\"padding:32px 40px 12px 40px;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_500/LOGO_DRAFTEA_COLOR_email_f3ftkr.png\\\" alt=\\\"Draftea\\\" width=\\\"220\\\" style=\\\"display:block;max-width:220px;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><div style=\\\"border-top:2px solid #7C3AED;width:55%;margin:0 auto;\\\"></div></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 14px 40px;\\\"><p style=\\\"margin:0;font-size:16px;font-weight:bold;color:#111111;\\\">Hola</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:0 40px 24px 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#444444;text-align:center;line-height:1.6;\\\">Gracias por escribirnos. Tu experiencia es nuestra prioridad y estamos aqu&iacute; para brindarte la mejor atenci&oacute;n.</p></td></tr><tr><td style=\\\"padding:0 40px 32px 40px;\\\"><div style=\\\"font-size:14px;color:#333333;line-height:1.75;text-align:left;\\\">Entendemos que tienes una situaci&oacute;n con tu cuenta y queremos ayudarte.<br><br>Para que podamos revisar tu caso a detalle y darte una respuesta personalizada, te pedimos que nos contactes directamente a trav&eacute;s de nuestro correo de soporte:<br><br><strong><a href=\\\"mailto:ayuda@draftea.com\\\" style=\\\"color:#7C3AED;\\\">ayuda@draftea.com</a></strong><br><br>Por favor incl&uacute;ye en tu mensaje los siguientes datos para que podamos identificarte r&aacute;pidamente:<br><br>&bull; <strong>Nombre completo</strong><br>&bull; <strong>Correo electr&oacute;nico</strong> asociado a tu cuenta<br>&bull; <strong>N&uacute;mero de tel&eacute;fono</strong> registrado en la app</div></td></tr><tr><td style=\\\"padding:0 40px 0 40px;\\\"><p style=\\\"margin:0;font-size:14px;color:#333333;line-height:1.7;\\\">Saludos,<br><strong>Equipo Draftea.</strong></p></td></tr><tr><td style=\\\"height:32px;\\\"></td></tr><tr><td style=\\\"padding:24px 40px 16px 40px;border-top:1px solid #eeeeee;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:12px;color:#888888;text-align:center;line-height:1.7;\\\">Valoramos tus comentarios y estamos constantemente buscando formas de mejorar nuestros servicios. No dudes en contactarnos, &iexcl;queremos saber de ti!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:13px;font-weight:bold;color:#111111;\\\">&iexcl;Gracias por elegir Draftea!</p></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:8px 40px;background:#fafafa;\\\"><img src=\\\"https://res.cloudinary.com/dytq3pp65/image/upload/f_auto,q_auto,w_100/DRAFTEA_email_ysn4oq.png\\\" alt=\\\"D\\\" width=\\\"36\\\" style=\\\"display:block;margin:0 auto;height:auto;\\\" /></td></tr><tr><td align=\\\"center\\\" style=\\\"padding:6px 40px 24px 40px;background:#fafafa;\\\"><p style=\\\"margin:0;font-size:11px;color:#bbbbbb;text-align:center;\\\">&copy;Draftea. Todos los derechos reservados.</p></td></tr></table>\",\"email\":\"{{ $json.email_usuario.replace('mailto:', '') }}\",\"priority\":2,\"status\":5,\"source\":10,\"type\":\"Comentarios/Sugerencias\",\"email_config_id\":YOUR_FRESHDESK_EMAIL_CONFIG_ID,\"tags\":[\"slack-feedback\",\"menciona-bloqueo\"],\"responder_id\":YOUR_FRESHDESK_RESPONDER_ID}",
+        "options": {}
+      },
+      "name": "Freshdesk - MENCIONA BLOQUEO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8288,
+        4656
+      ],
+      "id": "990c86c5-bc21-457d-b1d3-3a448bcc20d3",
+      "notes": "Crea ticket urgente para in_review antes de alertar a #fraud-review"
+    },
+    {
+      "parameters": {
+        "jsCode": "const freshdeskResponse = $input.item.json;\nconst ticketId = freshdeskResponse.id;\nif (!ticketId) {\n  throw new Error('Freshdesk no devolvió ticket ID: ' + JSON.stringify(freshdeskResponse));\n}\nconst feedbackData = $('Clasificar Feedback').item.json;\nreturn [{\n  json: {\n    ...feedbackData,\n    freshdesk_ticket_id: ticketId,\n    freshdesk_ticket_url: `https://draftea.freshdesk.com/a/tickets/${ticketId}`\n  }\n}];"
+      },
+      "name": "Extraer Ticket Menciona Bloqueo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8512,
+        4656
+      ],
+      "id": "927de946-16cd-4480-ae06-57b0e07de6c8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "nivel-neq-nonprog",
+              "leftValue": "={{ $('Build Reply').item.json.NIVEL.toLowerCase() }}",
+              "rightValue": "non-program",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "nivel-neq-nd",
+              "leftValue": "={{ $('Build Reply').item.json.NIVEL }}",
+              "rightValue": "N/D",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF - Check Nivel",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6560,
+        4336
+      ],
+      "id": "a0b84f4e-6c07-4fb7-a8e9-34660fe0bcc3"
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Build Reply').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "vip"
+      },
+      "name": "Add reaction vip",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        6784,
+        4320
+      ],
+      "id": "3791ec49-6cdc-45b8-b1f5-d2570553ba67",
+      "webhookId": "f1000002-0000-4000-8000-000000000012",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Build Reply').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "purple_alert"
+      },
+      "name": "Add reaction purple_alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        6992,
+        4320
+      ],
+      "id": "f0663833-24ea-4ab5-815b-de56d7b560fe",
+      "webhookId": "f1000003-0000-4000-8000-000000000013",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "slots-check-slot",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "slot",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "slots-check-gaming",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "gaming",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "slots-check-casino",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "casino",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "6b944a05-2438-4c69-8c80-087c834acdc2",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "spin",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "6824c012-5a2b-49df-865e-c031acc8d004",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "juego",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "792ad802-ca6d-42cf-a501-c04604f62869",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "giro",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "98476a91-b960-4182-9851-ccfc3feeb773",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "slot",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "4a232526-9498-429f-ab35-1492d5642b1c",
+              "leftValue": "={{ $('Mensaje en canal').item.json.text.toLowerCase() }}",
+              "rightValue": "sloot",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "name": "IF - Check Slots",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6560,
+        4160
+      ],
+      "id": "f4af4941-c15e-4c26-8f03-ef2a1013a9bc"
+    },
+    {
+      "parameters": {
+        "resource": "reaction",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Build Reply').item.json.channel }}",
+          "mode": "id"
+        },
+        "timestamp": "={{ $('Mensaje en canal').item.json.ts }}",
+        "name": "video_game"
+      },
+      "name": "Add reaction slot_machine",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        6784,
+        4144
+      ],
+      "id": "e1fd84ad-728b-4c92-98e7-945e75fc1af6",
+      "webhookId": "f1000005-0000-4000-8000-000000000015",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_N8N_SLACK_CREDENTIAL_ID",
+          "name": "Active full bot feedback"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Wait1": []
+  },
+  "connections": {
+    "Mensaje en canal": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Extract Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email": {
+      "main": [
+        [
+          {
+            "node": "Hex - Get user info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hex - Get user info": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Extract HEX data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract HEX data": {
+      "main": [
+        [
+          {
+            "node": "Build Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply in Slack Thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply in Slack Thread": {
+      "main": [
+        [
+          {
+            "node": "Preparar datos feedback",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Check Nivel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Check Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar datos feedback": {
+      "main": [
+        [
+          {
+            "node": "Clasificar Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route por Tipo": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Redactar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack - Alerta CX",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route Bloqueo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Freshdesk - MENCIONA BLOQUEO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freshdesk - Crear Ticket Bloqueo": {
+      "main": [
+        [
+          {
+            "node": "Extraer Ticket ID Bloqueo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Ticket ID Bloqueo": {
+      "main": [
+        [
+          {
+            "node": "Slack - Confirmar Thread Bloqueo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Bloqueo": {
+      "main": [
+        [
+          {
+            "node": "Slack - Alerta KYC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Freshdesk - Ticket InReview",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Freshdesk - Crear Ticket Bloqueo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freshdesk - Ticket InReview": {
+      "main": [
+        [
+          {
+            "node": "Extraer Ticket InReview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Ticket InReview": {
+      "main": [
+        [
+          {
+            "node": "Slack - Confirmar Thread Auto1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Confirmar Thread Bloqueo": {
+      "main": [
+        [
+          {
+            "node": "Add a reaction2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "GET - AI Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET - AI Messages": {
+      "main": [
+        [
+          {
+            "node": "Parsear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freshdesk - Enviar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Extraer Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Ticket": {
+      "main": [
+        [
+          {
+            "node": "Slack - Confirmar Thread Auto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar Feedback": {
+      "main": [
+        [
+          {
+            "node": "Route por Tipo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Redactar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Freshdesk - Enviar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Confirmar Thread Auto": {
+      "main": [
+        [
+          {
+            "node": "Add a reaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Alerta InReview": {
+      "main": [
+        [
+          {
+            "node": "Add a reaction1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Confirmar Thread Auto1": {
+      "main": [
+        [
+          {
+            "node": "Slack - Alerta InReview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Confirmar Thread Auto2": {
+      "main": [
+        [
+          {
+            "node": "Add a reaction3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freshdesk - MENCIONA BLOQUEO": {
+      "main": [
+        [
+          {
+            "node": "Extraer Ticket Menciona Bloqueo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Ticket Menciona Bloqueo": {
+      "main": [
+        [
+          {
+            "node": "Slack - Confirmar Thread Auto2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Nivel": {
+      "main": [
+        [
+          {
+            "node": "Add reaction vip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add reaction vip": {
+      "main": [
+        [
+          {
+            "node": "Add reaction purple_alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Slots": {
+      "main": [
+        [
+          {
+            "node": "Add reaction slot_machine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "abf307be-a503-41b6-9404-d401f9c8148b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cbbb8f38d1351864ff04fa40f28b5e686f08b80b4ea037e136335312231e256c"
+  },
+  "nodeGroups": [],
+  "id": "EzRuWt64rI9cFuJh",
+  "tags": []
+}
